@@ -153,13 +153,28 @@ def cut_clip(src, dst, start, end):
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
+    def _cors(self):
+        # The Clipzy website (clipzy-ai.web.app) calls this server from the
+        # browser, so every response must allow cross-origin requests.
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
     def _json(self, code, obj):
         body = json.dumps(obj).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        self._cors()
         self.end_headers()
         self.wfile.write(body)
+
+    def do_OPTIONS(self):
+        # Browser preflight for the cross-origin POST /clip call.
+        self.send_response(204)
+        self.send_header("Content-Length", "0")
+        self._cors()
+        self.end_headers()
 
     def _error(self, code, message):
         self._json(code, {"error": message})
@@ -241,6 +256,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
             self.send_header("Content-Length", str(size))
             self.send_header("X-Clip-Duration", f"{dur:.2f}")
+            self._cors()
             self.end_headers()
             with open(out, "rb") as f:
                 shutil.copyfileobj(f, self.wfile, length=1024 * 256)
