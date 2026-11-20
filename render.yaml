@@ -1,0 +1,12 @@
+# Render Blueprint — creates the Clipzy render server as a FREE web service.
+# Deploy it from the Render dashboard: New -> Blueprint -> connect the repo
+# containing this file. Nothing here spends money (plan: free).
+services:
+  - type: web
+    name: clipzy-render
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 10000
