@@ -131,7 +131,7 @@ both cuts), and the new code paths were verified as follows:
 
 | Test | Result |
 |---|---|
-| `GET /health` (v1.1.0) | `{"status":"ok","service":"clipzy-render","version":"1.1.0"}` |
+| `GET /health` (v1.1.1) | `{"status":"ok","service":"clipzy-render","version":"1.1.1"}` |
 | POST /clip "Me at the zoo" 5–15 s, no env | HTTP 500 after 146.5 s: `yt-dlp metadata failed: yt-dlp metadata timed out after 120s`. Server log proves the fix: the hang is now caught and the Invidious metadata fallback ran through all 8 instances, each failing cleanly, then a clean 500 (no crash). |
 | POST /clip with dummy cookies.txt (`YTDLP_COOKIES`) | Startup log `cookies: enabled`; yt-dlp command line shows `--cookies <file>` passed. HTTP 500 after 144.5 s (a fake cookie cannot unblock — expected). Proves the flag is wired end-to-end. |
 | POST /clip with `YTDLP_COOKIES` pointing at a missing file | Startup warns once (`WARNING: YTDLP_COOKIES=... not found, continuing without cookies`), `cookies: not configured`, request proceeds without `--cookies`. This run got YouTube's explicit bot-check page: `Sign in to confirm you're not a bot. Use --cookies-from-browser or --cookies...` — yt-dlp itself prescribes the cookies fix. |

@@ -54,7 +54,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 MAX_CLIP_SECONDS = 300          # longest clip we will render
 MAX_VIDEO_SECONDS = 4 * 3600    # refuse videos longer than 4h
 MAX_CONCURRENT_JOBS = 2
@@ -105,20 +105,43 @@ def _cookies_arg():
     YTDLP_COOKIES wins; otherwise cookies.txt next to server.py, if present.
     If YTDLP_COOKIES names a file that does not exist, warn once and
     continue without cookies (never crash the request over this).
+
+    The file is COPIED to a writable temp path first: yt-dlp opens the
+    cookies file for writing (to save updated cookies), so a read-only
+    source such as Render's /etc/secrets/cookies.txt fails with
+    "OSError: [Errno 30] Read-only file system". The copy is what
+    yt-dlp receives; the original is never written to.
     """
     global _cookies_warned
     path = os.environ.get("YTDLP_COOKIES")
     if path:
         if os.path.isfile(path):
-            return ["--cookies", path]
+            return ["--cookies", _writable_cookies_copy(path)]
         if not _cookies_warned:
             log(f"WARNING: YTDLP_COOKIES={path} not found, continuing without cookies")
             _cookies_warned = True
         return []
     default = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt")
     if os.path.isfile(default):
-        return ["--cookies", default]
+        return ["--cookies", _writable_cookies_copy(default)]
     return []
+
+
+def _writable_cookies_copy(src):
+    """Copy the cookies file to a writable temp path and return that path.
+
+    Falls back to the original path if the copy fails (yt-dlp will then
+    report the real error instead of this helper hiding it).
+    """
+    import shutil
+    import tempfile
+    dst = os.path.join(tempfile.gettempdir(), "clipzy-cookies.txt")
+    try:
+        shutil.copyfile(src, dst)
+        return dst
+    except OSError as e:
+        log(f"WARNING: could not copy cookies file to temp ({e}), using original path")
+        return src
 
 
 def _proxy_arg():
