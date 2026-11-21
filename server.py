@@ -23,6 +23,11 @@ Beating YouTube's bot-block ("Sign in to confirm you're not a bot"):
     YTDLP_COOKIES=/path/to/cookies.txt   (or a cookies.txt next to server.py)
         A cookies file exported from a logged-in YouTube browser session.
         yt-dlp then looks like a real signed-in user. Never commit it.
+    YTDLP_COOKIES_CONTENT=<the whole cookies.txt file contents>
+        Same cookies, but passed as the file's text instead of a path —
+        for hosts with no secret-file support (e.g. Koyeb). The server
+        writes the text to a temp file at first use. Never commit it,
+        never log it, never print it.
     YTDLP_PROXY=http://user:pass@host:port
         Route yt-dlp (and Invidious fetches) through a proxy. Only a
         *residential* proxy helps — datacenter proxies get blocked the
@@ -54,7 +59,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 MAX_CLIP_SECONDS = 300          # longest clip we will render
 MAX_VIDEO_SECONDS = 4 * 3600    # refuse videos longer than 4h
 MAX_CONCURRENT_JOBS = 2
@@ -102,7 +107,8 @@ def log(msg):
 def _cookies_arg():
     """Return ["--cookies", path] for yt-dlp if a cookies file is available.
 
-    YTDLP_COOKIES wins; otherwise cookies.txt next to server.py, if present.
+    Precedence: YTDLP_COOKIES_CONTENT (whole file text in an env var) >
+    YTDLP_COOKIES (file path) > cookies.txt next to server.py, if present.
     If YTDLP_COOKIES names a file that does not exist, warn once and
     continue without cookies (never crash the request over this).
 
@@ -113,6 +119,9 @@ def _cookies_arg():
     yt-dlp receives; the original is never written to.
     """
     global _cookies_warned
+    content_path = _cookies_from_content_env()
+    if content_path:
+        return ["--cookies", content_path]
     path = os.environ.get("YTDLP_COOKIES")
     if path:
         if os.path.isfile(path):
@@ -125,6 +134,41 @@ def _cookies_arg():
     if os.path.isfile(default):
         return ["--cookies", _writable_cookies_copy(default)]
     return []
+
+
+_cookies_content_path = None  # cached temp path written from YTDLP_COOKIES_CONTENT
+
+
+def _cookies_from_content_env():
+    """Write YTDLP_COOKIES_CONTENT to a writable temp file; return its path.
+
+    For hosts with no secret-file support (e.g. Koyeb): the whole
+    cookies.txt text is passed as an env var instead of a file path.
+    The text is written once (cached) to the same temp path the
+    file-path route uses. The value is NEVER logged or printed.
+    If the env var is unset/empty, or the write fails, return None
+    (the caller falls through to the file-path routes).
+    """
+    global _cookies_content_path
+    if _cookies_content_path is not None:
+        return _cookies_content_path
+    content = os.environ.get("YTDLP_COOKIES_CONTENT")
+    if not content:
+        return None
+    # Some dashboards paste multi-line values with literal "\n" escapes.
+    if "\n" not in content and "\\n" in content:
+        content = content.replace("\\n", "\n")
+    if not content.endswith("\n"):
+        content += "\n"
+    dst = os.path.join(tempfile.gettempdir(), "clipzy-cookies.txt")
+    try:
+        with open(dst, "w", encoding="utf-8") as f:
+            f.write(content)
+    except OSError as e:
+        log(f"WARNING: could not write cookies from env var ({e})")
+        return None
+    _cookies_content_path = dst
+    return dst
 
 
 def _writable_cookies_copy(src):
